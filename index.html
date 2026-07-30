@@ -219,8 +219,9 @@ Esperance</textarea>
       <h2 style="margin:0;">Businesses</h2>
       <div style="display:flex;align-items:center;gap:12px;">
         <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;user-select:none;">
-          <input type="checkbox" id="filterLicensed" checked style="accent-color:var(--accent);width:16px;height:16px;">
-          <span>Licensed only <span id="licensedCount" style="color:var(--muted);font-size:0.75rem;"></span></span>
+          <input type="checkbox" id="filterLicensed" style="accent-color:var(--accent);width:16px;height:16px;">
+          <span>Licensed only <span id="licensedCount" style="color:var(--muted);font-size:0.75rem;"></span>
+          <span style="color:var(--muted);font-size:0.75rem;cursor:help;" title="Based on Google Places serves_* fields + business types. Not all licensed venues have this data — filter is best-effort. Uncheck to see everything.">ⓘ</span></span>
         </label>
         <div class="export-row">
           <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
@@ -440,9 +441,11 @@ function getPhoneAndWebsite(placeId) {
           resolve({
             phone: place.formatted_phone_number || place.international_phone_number || '',
             website: place.website || '',
-            is_licensed: !!(place.serves_beer || place.serves_wine || place.serves_liquor),
+            serves_beer: !!place.serves_beer,
+            serves_wine: !!place.serves_wine,
+            serves_liquor: !!place.serves_liquor,
           });
-        } else resolve({ phone: '', website: '' });
+        } else resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false });
       }
     );
   });
@@ -523,7 +526,13 @@ async function runScrape() {
       const batch = entries.slice(i, i + 5);
       const enriched = await Promise.all(batch.map(([pid]) => getPhoneAndWebsite(pid)));
       totalApiCalls += batch.length;
-      batch.forEach(([_, rec], j) => { rec.phone = enriched[j].phone; rec.website = enriched[j].website; rec.is_licensed = enriched[j].is_licensed || false; });
+      batch.forEach(([_, rec], j) => {
+        rec.phone = enriched[j].phone;
+        rec.website = enriched[j].website;
+        rec.serves_beer = enriched[j].serves_beer;
+        rec.serves_wine = enriched[j].serves_wine;
+        rec.serves_liquor = enriched[j].serves_liquor;
+      });
       if ((i + 5) % 50 === 0 || i + 5 >= entries.length) log(`    ${Math.min(i + 5, entries.length)}/${entries.length} enriched`);
       await new Promise(r => setTimeout(r, 100));
     }
@@ -548,18 +557,31 @@ async function runScrape() {
 function cleanup() { STATE.running = false; btnScrape.disabled = false; btnStop.disabled = true; setStatus('Idle', 'idle'); }
 
 // =============================================================================
+// Licensed venue detection (Google serves_* flags + business type heuristic)
+// =============================================================================
+function computeIsLicensed(rec) {
+  // Google Places alcohol flags (often missing for regional venues)
+  if (rec.serves_beer || rec.serves_wine || rec.serves_liquor) return true;
+  // Business types that inherently imply alcohol service
+  const alcTypes = ['bar', 'pub', 'night_club', 'liquor_store', 'casino'];
+  const types = (rec.types || '').split(',');
+  if (types.some(t => alcTypes.includes(t))) return true;
+  return false;
+}
+
+// =============================================================================
 // Render results
 // =============================================================================
 function renderResults(records) {
   $('resultsSection').style.display = 'block';
 
-  // Count licensed
-  const licensed = records.filter(r => r.is_licensed).length;
-  $('licensedCount').textContent = `(${licensed} of ${records.length})`;
+  // Count licensed — uses type + Google serves_* data
+  const withLic = records.filter(computeIsLicensed).length;
+  $('licensedCount').textContent = `(${withLic} of ${records.length} known)`;
 
   // Apply filter
   const filterOn = $('filterLicensed').checked;
-  const filtered = filterOn ? records.filter(r => r.is_licensed) : records;
+  const filtered = filterOn ? records.filter(computeIsLicensed) : records;
 
   const byTown = {};
   filtered.forEach(r => { byTown[r.source_town] = (byTown[r.source_town] || 0) + 1; });
@@ -573,7 +595,7 @@ function renderResults(records) {
   const tbody = $('resultsBody');
   tbody.innerHTML = filtered.map(r => {
     const cats = (r.source_categories || []).join(', ');
-    const badge = r.is_licensed ? '<span style="font-size:0.75rem;color:var(--orange);">🍺</span>' : '';
+    const badge = computeIsLicensed(r) ? '<span style="font-size:0.75rem;color:var(--orange);" title="Known to serve alcohol">🍺</span>' : '';
     return `<tr>
       <td class="td-name" title="${escHtml(r.business_name)}">${badge} ${escHtml(r.business_name)}</td>
       <td>${escHtml(r.address.replace(', Australia', ''))}</td>
