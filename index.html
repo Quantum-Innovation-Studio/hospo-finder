@@ -456,26 +456,31 @@ function textSearchAll(query, town) {
   });
 }
 
-function getPhoneAndWebsite(placeId) {
-  return new Promise((resolve) => {
-    placesService.getDetails(
-      { placeId, fields: ['formatted_phone_number', 'international_phone_number', 'website', 'serves_beer', 'serves_wine', 'serves_liquor'] },
-      (place, status) => {
-        if (status === google.maps.places.PlacesServiceStatus.OK) {
-          resolve({
-            phone: place.formatted_phone_number || place.international_phone_number || '',
-            website: place.website || '',
-            serves_beer: !!place.serves_beer,
-            serves_wine: !!place.serves_wine,
-            serves_liquor: !!place.serves_liquor,
-          });
-        } else {
-          log(`getDetails status: ${status} for ${placeId}`, 'err');
-          resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false });
-        }
-      }
-    );
-  });
+async function getPhoneAndWebsite(placeId) {
+  if (!placeId) return { phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false };
+  try {
+    const key = getKey();
+    const fields = 'formatted_phone_number,international_phone_number,website,serves_beer,serves_wine,serves_liquor';
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent(fields)}&key=${encodeURIComponent(key)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === 'OK') {
+      const p = data.result;
+      return {
+        phone: p.formatted_phone_number || p.international_phone_number || '',
+        website: p.website || '',
+        serves_beer: !!p.serves_beer,
+        serves_wine: !!p.serves_wine,
+        serves_liquor: !!p.serves_liquor,
+      };
+    } else {
+      log(`getDetails REST API status: ${data.status} for ${placeId}`, 'err');
+      return { phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false };
+    }
+  } catch (e) {
+    log(`getDetails error: ${e.message} for ${placeId}`, 'err');
+    return { phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false };
+  }
 }
 
 // =============================================================================
