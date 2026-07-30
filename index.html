@@ -252,11 +252,10 @@ Esperance</textarea>
             <th style="text-align:left;min-width:180px;">Name</th>
             <th style="text-align:left;">Address</th>
             <th>Phone</th>
-            <th>Email</th>
+            <th style="min-width:90px;">Email</th>
             <th>Categories</th>
             <th>Town</th>
             <th>⭐</th>
-            <th style="width:80px;">Get</th>
           </tr>
         </thead>
         <tbody id="resultsBody"></tbody>
@@ -639,18 +638,10 @@ function renderResults(records) {
       <td class="td-name" title="${escHtml(r.business_name)}">${badge} ${escHtml(r.business_name)}</td>
       <td>${escHtml(r.address.replace(', Australia', ''))}</td>
       <td>${r.phone ? escHtml(r.phone) : '<span class="no-phone">—</span>'}</td>
-      <td class="email-col">${r.email ? escHtml(r.email) : ''}</td>
+      <td class="email-col">${r.email ? escHtml(r.email) : (r.website ? `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">✉️ Find</button>` : '')}</td>
       <td style="font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(cats)}">${escHtml(cats)}</td>
       <td>${escHtml(r.source_town)}</td>
       <td>${r.rating || ''}</td>
-      <td style="text-align:center;">
-        ${r.email
-          ? '<span style="color:var(--green);font-size:0.9rem;" title="Email found">✉️</span>'
-          : r.website
-            ? `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">✉️ Find Email</button>`
-            : '<span style="color:var(--muted);font-size:0.7rem;">—</span>'
-        }
-      </td>
     </tr>`;
   }).join('');
   $('rowCount').textContent = `Showing ${filtered.length} of ${records.length} rows`;
