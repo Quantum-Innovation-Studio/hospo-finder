@@ -570,16 +570,59 @@ async function runScrape() {
       if ((i + 5) % 50 === 0 || i + 5 >= entries.length) log(`    ${Math.min(i + 5, entries.length)}/${entries.length} enriched`);
       await new Promise(r => setTimeout(r, 100));
     }
+
+    // ── Email discovery phase ──
+    log(`\n── Discovering emails…`, 'highlight');
+    const allRecs = Array.from(STATE.places.values());
+    let emailDone = 0;
+    for (let i = 0; i < allRecs.length; i += 3) {
+      if (STATE.stopped) break;
+      const batch = allRecs.slice(i, i + 3);
+      await Promise.all(batch.map(async (rec) => {
+        if (rec.email) return;
+        // Find website if missing
+        if (!rec.website) {
+          const details = await getPhoneAndWebsite(rec.place_id);
+          totalApiCalls++;
+          if (details.website) rec.website = details.website;
+          else {
+            // DuckDuckGo search via serverless function
+            try {
+              const q = window.location.origin + '/api/email-fetch?search=' + encodeURIComponent(rec.business_name + ' ' + rec.source_town);
+              const resp = await fetch(q, { signal: AbortSignal.timeout(10000) });
+              const data = await resp.json();
+              if (data.website) rec.website = data.website;
+            } catch (e) {}
+          }
+        }
+        // Scrape website for email
+        if (rec.website) {
+          try {
+            const url = window.location.origin + '/api/email-fetch?url=' + encodeURIComponent(rec.website);
+            const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+            const data = await resp.json();
+            if (data.emails && data.emails.length) {
+              rec.email = data.emails[0];
+              if (data.emails.length > 1) rec.emails = data.emails.join('; ');
+            }
+          } catch (e) {}
+        }
+      }));
+      emailDone += batch.length;
+      if (emailDone % 5 === 0 || emailDone >= allRecs.length) log(`  Emails: ${emailDone}/${allRecs.length}`);
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
 
   const records = Array.from(STATE.places.values());
-  const byTown = {}; let withPhone = 0;
-  records.forEach(r => { byTown[r.source_town] = (byTown[r.source_town] || 0) + 1; if (r.phone) withPhone++; });
-  STATE.stats = { total: records.length, byTown, withPhone };
+  const byTown = {}; let withPhone = 0, withEmail = 0;
+  records.forEach(r => { byTown[r.source_town] = (byTown[r.source_town] || 0) + 1; if (r.phone) withPhone++; if (r.email) withEmail++; });
+  STATE.stats = { total: records.length, byTown, withPhone, withEmail };
 
   log(`\n${'='.repeat(50)}`, 'highlight');
   log(`Total businesses:   ${records.length}`, 'ok');
   log(`With phone number:  ${withPhone} (${records.length ? Math.round(withPhone/records.length*100) : 0}%)`, 'ok');
+  log(`With email:         ${withEmail} (${records.length ? Math.round(withEmail/records.length*100) : 0}%)`, 'ok');
   log(`API calls made:     ${totalApiCalls}`, 'info');
   log(`${'='.repeat(50)}`, 'highlight');
 
@@ -646,7 +689,7 @@ function renderResults(records) {
       <td class="td-name" title="${escHtml(r.business_name)}">${badge} ${escHtml(r.business_name)}</td>
       <td>${escHtml(r.address.replace(', Australia', ''))}</td>
       <td>${r.phone ? escHtml(r.phone) : '<span class="no-phone">—</span>'}</td>
-      <td class="email-col">${r.email ? escHtml(r.email) : `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;" title="${r.website ? 'Scrape website for email' : 'Find website + email'}">✉️ Find Email</button>`}</td>
+      <td class="email-col">${r.email ? escHtml(r.email) : '<span style="color:var(--muted);font-size:0.75rem;">—</span>'}</td>
       <td style="font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(cats)}">${escHtml(cats)}</td>
       <td>${escHtml(r.source_town)}</td>
       <td>${r.rating || ''}</td>
@@ -655,9 +698,9 @@ function renderResults(records) {
   $('rowCount').textContent = `Showing ${filtered.length} of ${records.length} rows`;
 
   // Enable enrich button
-  const withSite = records.filter(r => r.website).length;
-  $('btnEnrichEmails').textContent = `✉️ Extract Emails (${withSite} with websites)`;
-  $('btnEnrichEmails').style.display = withSite > 0 ? '' : 'none';
+  const withoutEmail = records.filter(r => !r.email).length;
+  $('btnEnrichEmails').textContent = `✉️ Rescan Emails (${withoutEmail} missing)`;
+  $('btnEnrichEmails').style.display = withoutEmail > 0 ? '' : 'none';
 }
 
 // =============================================================================
@@ -665,36 +708,51 @@ function renderResults(records) {
 // =============================================================================
 async function enrichEmails() {
   const records = Array.from(STATE.places.values());
-  const withSite = records.filter(r => r.website);
-  if (!withSite.length) { log('No businesses with websites to check.', 'info'); return; }
-  log(`\n── Checking ${withSite.length} websites for contact details…`, 'highlight');
+  const missing = records.filter(r => !r.email);
+  if (!missing.length) { log('All businesses already have emails.', 'info'); return; }
+  log(`\n── Re-scanning ${missing.length} businesses for emails…`, 'highlight');
   const btn = $('btnEnrichEmails');
   btn.disabled = true;
 
-  // Determine API endpoint (Vercel serverless, or fallback)
-  const apiBase = window.location.origin + '/api/email-fetch?url=';
-
   let done = 0;
-  for (let i = 0; i < withSite.length; i++) {
-    const rec = withSite[i];
-    if (!rec.website) continue;
-    try {
-      const resp = await fetch(apiBase + encodeURIComponent(rec.website), { signal: AbortSignal.timeout(15000) });
-      const data = await resp.json();
-      if (data.emails && data.emails.length) {
-        rec.email = data.emails[0]; // take the first business email
-        if (data.emails.length > 1) rec.emails = data.emails.join('; ');
+  for (let i = 0; i < missing.length; i += 3) {
+    if (STATE.stopped) break;
+    const batch = missing.slice(i, i + 3);
+    await Promise.all(batch.map(async (rec) => {
+      if (rec.email) return;
+      // Find website if missing
+      if (!rec.website) {
+        const details = await getPhoneAndWebsite(rec.place_id);
+        if (details.website) rec.website = details.website;
+        else {
+          try {
+            const q = window.location.origin + '/api/email-fetch?search=' + encodeURIComponent(rec.business_name + ' ' + rec.source_town);
+            const resp = await fetch(q, { signal: AbortSignal.timeout(10000) });
+            const data = await resp.json();
+            if (data.website) rec.website = data.website;
+          } catch (e) {}
+        }
       }
-    } catch (e) {
-      // Silently skip — some sites block, that's expected
-    }
-    done++;
-    if (done % 10 === 0 || done === withSite.length) log(`  Emails: ${done}/${withSite.length}`);
-    await new Promise(r => setTimeout(r, 200)); // be polite
+      // Scrape website for email
+      if (rec.website) {
+        try {
+          const url = window.location.origin + '/api/email-fetch?url=' + encodeURIComponent(rec.website);
+          const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          const data = await resp.json();
+          if (data.emails && data.emails.length) {
+            rec.email = data.emails[0];
+            if (data.emails.length > 1) rec.emails = data.emails.join('; ');
+          }
+        } catch (e) {}
+      }
+    }));
+    done += batch.length;
+    if (done % 5 === 0 || done >= missing.length) log(`  Rescan: ${done}/${missing.length}`);
+    await new Promise(r => setTimeout(r, 200));
   }
 
   const found = records.filter(r => r.email).length;
-  log(`${found} emails found (${Math.round(found/records.length*100)}%)`, 'ok');
+  log(`${found}/${records.length} have emails`, 'ok');
   renderResults(records);
   btn.disabled = false;
 }
