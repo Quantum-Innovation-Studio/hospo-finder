@@ -95,6 +95,7 @@ module.exports = async (req, res) => {
             licence_ref: cells[0],
             licence_type: cells[1],
             name: cells[2],
+            licensee: cells[3] || '',
             suburb: suburb
           });
         }

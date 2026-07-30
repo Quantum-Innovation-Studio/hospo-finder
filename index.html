@@ -236,7 +236,11 @@ Esperance</textarea>
           </label>
           <span style="color:var(--muted);font-size:0.75rem;">🍺 after results = might have licence (Google estimate)</span>
           <span style="color:var(--muted);font-size:0.75rem;cursor:help;" title="Based on Google Places serves_* fields + business types. Not all licensed venues have this data — use 'Verify Licences' after search for definitive results.">ⓘ</span>
-        </div>
+          </div>
+          <div style="margin-top:6px;font-size:0.72rem;color:var(--muted);line-height:1.3;border-left:3px solid var(--border);padding-left:8px;">
+          <strong>Licence verification</strong> is a discovery tool to reduce manual legwork, not a definitive register cross-reference. Business names on licences often differ from Google listings — results are indicative, not one-for-one. Always verify directly with the relevant state authority.<br>
+          © Quantum Innovation WA
+          </div>
       </div>
     </div>
     <div class="table-wrap">
@@ -730,13 +734,25 @@ async function verifyLicences() {
     const register = new Map(); // suburb -> Set of normalized names
     for (const [suburb, licences] of Object.entries(data.results)) {
       const subLower = suburb.toLowerCase();
-      const names = new Set(licences.map(l =>
-        l.name.toLowerCase()
-          .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
-          .replace(/[^a-z0-9\s]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-      ));
+      const names = new Set();
+      for (const l of licences) {
+        // Normalize business name
+        if (l.name) {
+          names.add(l.name.toLowerCase()
+            .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim());
+        }
+        // Also normalize licensee name for cross-reference
+        if (l.licensee) {
+          names.add(l.licensee.toLowerCase()
+            .replace(/\b(inc|pty\s*ltd|ltd|pty|wa)\b/g, '')
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim());
+        }
+      }
       register.set(subLower, names);
     }
 
