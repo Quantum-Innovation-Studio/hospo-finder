@@ -420,7 +420,9 @@ function loadMapsApi(apiKey) {
 
     window.__gmapsCallback = () => {
       mapsApiLoaded = true; mapsApiLoading = false;
-      const div = document.createElement('div'); div.id = '__places_container'; div.style.display = 'none';
+      const div = document.createElement('div'); div.id = '__places_container';
+      // Must have visible dimensions — display:none gives zero size which can break some API versions
+      div.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:300px;height:300px;';
       document.body.appendChild(div);
       // Must create a proper Map instance — getDetails fails with INVALID_REQUEST
       // when PlacesService is backed by a plain div in some API versions.
@@ -466,23 +468,32 @@ function textSearchAll(query, town) {
 }
 
 async function getPhoneAndWebsite(placeId) {
+  if (!placeId) return { phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false };
+  // Try with specific fields first, fall back to all fields on INVALID_REQUEST
   return new Promise((resolve) => {
-    if (!placeId) { resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false }); return; }
-    const request = { placeId, fields: ['formatted_phone_number', 'international_phone_number', 'website', 'serves_beer', 'serves_wine', 'serves_liquor'] };
-    placesService.getDetails(request, (place, status) => {
-      if (status === google.maps.places.PlacesServiceStatus.OK) {
-        resolve({
-          phone: place.formatted_phone_number || place.international_phone_number || '',
-          website: place.website || '',
-          serves_beer: !!place.serves_beer,
-          serves_wine: !!place.serves_wine,
-          serves_liquor: !!place.serves_liquor,
-        });
-      } else {
-        log(`getDetails status: ${status} for ${placeId}`, 'err');
-        resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false });
-      }
-    });
+    const doReq = (fields) => {
+      const request = { placeId };
+      if (fields) request.fields = fields;
+      placesService.getDetails(request, (place, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK) {
+          resolve({
+            phone: place.formatted_phone_number || place.international_phone_number || '',
+            website: place.website || '',
+            serves_beer: !!place.serves_beer,
+            serves_wine: !!place.serves_wine,
+            serves_liquor: !!place.serves_liquor,
+          });
+        } else if (fields && status === google.maps.places.PlacesServiceStatus.INVALID_REQUEST) {
+          // Retry without fields filter — some field combos trigger INVALID_REQUEST
+          log(`getDetails retry without fields for ${placeId}`, 'info');
+          doReq(null);
+        } else {
+          log(`getDetails status: ${status} for ${placeId}`, 'err');
+          resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false });
+        }
+      });
+    };
+    doReq(['formatted_phone_number', 'international_phone_number', 'website', 'serves_beer', 'serves_wine', 'serves_liquor']);
   });
 }
 
