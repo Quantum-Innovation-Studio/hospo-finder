@@ -469,7 +469,10 @@ function getPhoneAndWebsite(placeId) {
             serves_wine: !!place.serves_wine,
             serves_liquor: !!place.serves_liquor,
           });
-        } else resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false });
+        } else {
+          log(`getDetails status: ${status} for ${placeId}`, 'err');
+          resolve({ phone: '', website: '', serves_beer: false, serves_wine: false, serves_liquor: false });
+        }
       }
     );
   });
