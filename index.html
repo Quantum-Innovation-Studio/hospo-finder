@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="logo.png">
 <title>Hospitality Business Finder</title>
 <style>
 :root {
@@ -653,7 +654,7 @@ async function enrichEmails() {
   btn.disabled = true;
 
   // Determine API endpoint (Vercel serverless, or fallback)
-  const apiBase = window.location.origin + '/api/email-scrape?url=';
+  const apiBase = window.location.origin + '/api/email-fetch?url=';
 
   let done = 0;
   for (let i = 0; i < withSite.length; i++) {
