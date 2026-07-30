@@ -217,11 +217,17 @@ Esperance</textarea>
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
       <h2 style="margin:0;">Businesses</h2>
-      <div class="export-row">
-        <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
-        <button class="btn btn-success" id="btnExportCSV">📥 Export CSV</button>
-        <button class="btn btn-success" id="btnExportJSON">📥 Export JSON</button>
-        <span id="rowCount" style="font-size:0.85rem;color:var(--muted);align-self:center;"></span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="filterLicensed" checked style="accent-color:var(--accent);width:16px;height:16px;">
+          <span>Licensed only <span id="licensedCount" style="color:var(--muted);font-size:0.75rem;"></span></span>
+        </label>
+        <div class="export-row">
+          <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
+          <button class="btn btn-success" id="btnExportCSV">📥 Export CSV</button>
+          <button class="btn btn-success" id="btnExportJSON">📥 Export JSON</button>
+          <span id="rowCount" style="font-size:0.85rem;color:var(--muted);align-self:center;"></span>
+        </div>
       </div>
     </div>
     <div class="table-wrap">
@@ -428,12 +434,13 @@ function textSearchAll(query) {
 function getPhoneAndWebsite(placeId) {
   return new Promise((resolve) => {
     placesService.getDetails(
-      { placeId, fields: ['formatted_phone_number', 'international_phone_number', 'website'] },
+      { placeId, fields: ['formatted_phone_number', 'international_phone_number', 'website', 'serves_beer', 'serves_wine', 'serves_liquor'] },
       (place, status) => {
         if (status === google.maps.places.PlacesServiceStatus.OK) {
           resolve({
             phone: place.formatted_phone_number || place.international_phone_number || '',
             website: place.website || '',
+            is_licensed: !!(place.serves_beer || place.serves_wine || place.serves_liquor),
           });
         } else resolve({ phone: '', website: '' });
       }
@@ -516,7 +523,7 @@ async function runScrape() {
       const batch = entries.slice(i, i + 5);
       const enriched = await Promise.all(batch.map(([pid]) => getPhoneAndWebsite(pid)));
       totalApiCalls += batch.length;
-      batch.forEach(([_, rec], j) => { rec.phone = enriched[j].phone; rec.website = enriched[j].website; });
+      batch.forEach(([_, rec], j) => { rec.phone = enriched[j].phone; rec.website = enriched[j].website; rec.is_licensed = enriched[j].is_licensed || false; });
       if ((i + 5) % 50 === 0 || i + 5 >= entries.length) log(`    ${Math.min(i + 5, entries.length)}/${entries.length} enriched`);
       await new Promise(r => setTimeout(r, 100));
     }
@@ -545,17 +552,30 @@ function cleanup() { STATE.running = false; btnScrape.disabled = false; btnStop.
 // =============================================================================
 function renderResults(records) {
   $('resultsSection').style.display = 'block';
-  const statsHtml = Object.entries(STATE.stats.byTown)
+
+  // Count licensed
+  const licensed = records.filter(r => r.is_licensed).length;
+  $('licensedCount').textContent = `(${licensed} of ${records.length})`;
+
+  // Apply filter
+  const filterOn = $('filterLicensed').checked;
+  const filtered = filterOn ? records.filter(r => r.is_licensed) : records;
+
+  const byTown = {};
+  filtered.forEach(r => { byTown[r.source_town] = (byTown[r.source_town] || 0) + 1; });
+  const withPhone = filtered.filter(r => r.phone).length;
+
+  const statsHtml = Object.entries(byTown)
     .map(([town, count]) => `<div class="stat"><div class="stat-num">${count}</div><div class="stat-label">${town}</div></div>`).join('');
-  const phonePct = records.length ? Math.round(STATE.stats.withPhone / records.length * 100) : 0;
-  $('statsRow').innerHTML = `${statsHtml}<div class="stat"><div class="stat-num">${records.length}</div><div class="stat-label">Total</div></div><div class="stat"><div class="stat-num">${phonePct}%</div><div class="stat-label">With Phone</div></div>`;
+  const phonePct = filtered.length ? Math.round(withPhone / filtered.length * 100) : 0;
+  $('statsRow').innerHTML = `${statsHtml}<div class="stat"><div class="stat-num">${filtered.length}</div><div class="stat-label">Showing</div></div><div class="stat"><div class="stat-num">${phonePct}%</div><div class="stat-label">With Phone</div></div>`;
 
   const tbody = $('resultsBody');
-  tbody.innerHTML = records.map(r => {
+  tbody.innerHTML = filtered.map(r => {
     const cats = (r.source_categories || []).join(', ');
-    const website = r.website || '';
+    const badge = r.is_licensed ? '<span style="font-size:0.75rem;color:var(--orange);">🍺</span>' : '';
     return `<tr>
-      <td class="td-name" title="${escHtml(r.business_name)}">${escHtml(r.business_name)}</td>
+      <td class="td-name" title="${escHtml(r.business_name)}">${badge} ${escHtml(r.business_name)}</td>
       <td>${escHtml(r.address.replace(', Australia', ''))}</td>
       <td>${r.phone ? escHtml(r.phone) : '<span class="no-phone">—</span>'}</td>
       <td class="email-col">${r.email ? escHtml(r.email) : ''}</td>
@@ -564,9 +584,9 @@ function renderResults(records) {
       <td>${r.rating || ''}</td>
     </tr>`;
   }).join('');
-  $('rowCount').textContent = `Showing ${records.length} rows`;
+  $('rowCount').textContent = `Showing ${filtered.length} of ${records.length} rows`;
 
-  // Enable enrich button if there are websites to scrape
+  // Enable enrich button
   const withSite = records.filter(r => r.website).length;
   $('btnEnrichEmails').textContent = `✉️ Extract Emails (${withSite} with websites)`;
   $('btnEnrichEmails').style.display = withSite > 0 ? '' : 'none';
@@ -626,6 +646,11 @@ $('postcodeInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e
 $('stateSelect').addEventListener('change', () => { if ($('postcodeInput').value.trim()) doPostcodeLookup(); });
 
 $('btnEnrichEmails').addEventListener('click', enrichEmails);
+
+$('filterLicensed').addEventListener('change', () => {
+  const records = Array.from(STATE.places.values());
+  if (records.length) renderResults(records);
+});
 
 $('btnExportCSV').addEventListener('click', () => {
   const records = Array.from(STATE.places.values());
