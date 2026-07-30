@@ -696,8 +696,10 @@ $('stateSelect').addEventListener('change', () => { if ($('postcodeInput').value
 $('btnEnrichEmails').addEventListener('click', enrichEmails);
 
 // =============================================================================
-// WA Gov Licence Deep Check
+// Multi-State Licence Deep Check
 // =============================================================================
+const LICENCE_CHECK_STATES = ['WA', 'NSW', 'VIC', 'TAS']; // Supported states
+
 async function verifyLicences() {
   const records = Array.from(STATE.places.values());
   if (!records.length) return;
@@ -705,87 +707,114 @@ async function verifyLicences() {
   const btn = $('btnVerifyLicences');
   btn.disabled = true;
   btn.textContent = '🍺 Verifying...';
-  setStatus('Cross-referencing WA liquor register...', 'working');
+  setStatus('Cross-referencing state liquor registers...', 'working');
 
-  // Get unique suburbs for WA state (strip state suffix from town names)
-  const waSuburbs = [...new Set(
-    records.filter(r => r.source_state === 'WA').map(r => {
-      const parts = r.source_town.split(' ');
-      return parts.slice(0, -1).join(' '); // Drop the last word (state code)
-    })
-  )];
-  if (!waSuburbs.length) {
-    log('⚠ No WA results to verify. Deep check currently supports WA only.');
+  // Group records by state
+  const byState = {};
+  for (const rec of records) {
+    const st = rec.source_state || rec.source_town.split(' ').pop();
+    if (!byState[st]) byState[st] = [];
+    byState[st].push(rec);
+  }
+
+  const supportedStates = Object.keys(byState).filter(s => LICENCE_CHECK_STATES.includes(s));
+  if (!supportedStates.length) {
+    log(`⚠ No results from supported states (${LICENCE_CHECK_STATES.join(', ')}) to verify.`, 'err');
     btn.disabled = false;
     btn.textContent = '🍺 Verify Licences';
     setStatus('Idle', 'idle');
     return;
   }
 
-  log(`🔍 Checking ${waSuburbs.length} WA suburb(s) against DLGSC register...`);
-  log(`   Suburbs: ${waSuburbs.join(', ')}`);
+  log(`🔍 Checking ${supportedStates.length} state(s): ${supportedStates.join(', ')}`);
 
-  try {
-    const resp = await fetch(`/api/wa-licence-check?suburbs=${waSuburbs.join(',')}`);
-    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
-    const data = await resp.json();
+  let totalMatched = 0;
+  let totalErrors = [];
 
-    // Build a lookup from the register
-    const register = new Map(); // suburb -> Set of normalized names
-    for (const [suburb, licences] of Object.entries(data.results)) {
-      const subLower = suburb.toLowerCase();
-      const names = new Set();
-      for (const l of licences) {
-        // Normalize business name
-        if (l.name) {
-          names.add(l.name.toLowerCase()
-            .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
-            .replace(/[^a-z0-9\s]/g, '')
-            .replace(/\s+/g, ' ')
-            .trim());
+  for (const state of supportedStates) {
+    // Get unique suburbs for this state (strip state suffix from town names)
+    const suburbs = [...new Set(
+      byState[state].map(r => {
+        const parts = r.source_town.split(' ');
+        return parts.slice(0, -1).join(' ') || parts[0];
+      })
+    )];
+
+    if (!suburbs.length) continue;
+    log(`  ${state}: ${suburbs.length} suburb(s): ${suburbs.join(', ')}`);
+
+    try {
+      const resp = await fetch(`/api/licence-check?state=${state}&suburbs=${suburbs.join(',')}`);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+      const data = await resp.json();
+
+      if (data.unsupported) {
+        log(`  ⏳ ${state}: ${data.errors[0].error}`);
+        continue;
+      }
+
+      // Build a lookup from the register
+      const register = new Map(); // suburb -> Set of normalized names
+      for (const [suburb, licences] of Object.entries(data.results)) {
+        const subLower = suburb.toLowerCase();
+        const names = new Set();
+        for (const l of licences) {
+          if (l.name) {
+            names.add(l.name.toLowerCase()
+              .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
+              .replace(/[^a-z0-9\s]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim());
+          }
+          if (l.licensee) {
+            names.add(l.licensee.toLowerCase()
+              .replace(/\b(inc|pty\s*ltd|ltd|pty|wa|nsw|vic|tas|qld|sa|act|nt)\b/g, '')
+              .replace(/[^a-z0-9\s]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim());
+          }
         }
-        // Also normalize licensee name for cross-reference
-        if (l.licensee) {
-          names.add(l.licensee.toLowerCase()
-            .replace(/\b(inc|pty\s*ltd|ltd|pty|wa)\b/g, '')
-            .replace(/[^a-z0-9\s]/g, '')
-            .replace(/\s+/g, ' ')
-            .trim());
+        register.set(subLower, names);
+      }
+
+      // Match each record for this state
+      let matched = 0;
+      for (const rec of byState[state]) {
+        const parts = rec.source_town.split(' ');
+        const subLower = parts.slice(0, -1).join(' ').toLowerCase() || rec.source_town.toLowerCase();
+        const regNames = register.get(subLower);
+        if (!regNames) continue;
+
+        const googleName = rec.business_name.toLowerCase()
+          .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
+          .replace(/[^a-z0-9\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        for (const regName of regNames) {
+          if (googleName === regName || googleName.includes(regName) || regName.includes(googleName)) {
+            rec.verified_licensed = true;
+            matched++;
+            break;
+          }
         }
       }
-      register.set(subLower, names);
-    }
 
-    // Match each WA record against the register
-    let matched = 0;
-    for (const rec of records) {
-      if (rec.source_state !== 'WA') continue;
-      const parts = rec.source_town.split(' ');
-      const subLower = parts.slice(0, -1).join(' ').toLowerCase() || rec.source_town.toLowerCase();
-      const regNames = register.get(subLower);
-      if (!regNames) continue;
-
-      const googleName = rec.business_name.toLowerCase()
-        .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
-        .replace(/[^a-z0-9\s]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      for (const regName of regNames) {
-        if (googleName === regName || googleName.includes(regName) || regName.includes(googleName)) {
-          rec.verified_licensed = true;
-          matched++;
-          break;
-        }
+      log(`  ✅ ${state}: ${matched} businesses verified`);
+      if (data.errors && data.errors.length) {
+        data.errors.forEach(e => log(`  ⚠ ${e.suburb || ''}: ${e.error}`));
+        totalErrors.push(...data.errors);
       }
+      totalMatched += matched;
+    } catch (err) {
+      log(`  ❌ ${state}: ${err.message}`);
+      totalErrors.push({ state, error: err.message });
     }
-
-    log(`✅ ${matched} businesses verified licensed via WA DLGSC register`);
-    if (data.errors.length) log(`   Errors: ${JSON.stringify(data.errors)}`);
-    renderResults(records);
-  } catch (err) {
-    log(`❌ Verification failed: ${err.message}`);
   }
+
+  log(`✅ Done: ${totalMatched} verified licensed across ${supportedStates.length} state(s)`);
+  if (totalErrors.length) log(`   ${totalErrors.length} error(s) — details above`);
+  renderResults(records);
 
   btn.disabled = false;
   btn.textContent = '🍺 Verify Licences';
