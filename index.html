@@ -216,18 +216,26 @@ Esperance</textarea>
 
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-      <h2 style="margin:0;">Businesses</h2>
-      <div style="display:flex;align-items:center;gap:12px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;user-select:none;">
-          <input type="checkbox" id="filterLicensed" style="accent-color:var(--accent);width:16px;height:16px;">
-          <span>Licensed only <span id="licensedCount" style="color:var(--muted);font-size:0.75rem;"></span>
-          <span style="color:var(--muted);font-size:0.75rem;cursor:help;" title="Based on Google Places serves_* fields + business types. Not all licensed venues have this data — filter is best-effort. Uncheck to see everything.">ⓘ</span></span>
-        </label>
-        <div class="export-row">
-          <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
-          <button class="btn btn-success" id="btnExportCSV">📥 Export CSV</button>
-          <button class="btn btn-success" id="btnExportJSON">📥 Export JSON</button>
-          <span id="rowCount" style="font-size:0.85rem;color:var(--muted);align-self:center;"></span>
+    <h2 style="margin:0;">Businesses</h2>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="export-row">
+        <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
+        <button class="btn" id="btnVerifyLicences" style="border-color:#6a5acd;color:#6a5acd;">🍺 Verify Licences</button>
+        <button class="btn btn-success" id="btnExportCSV">📥 Export CSV</button>
+        <button class="btn btn-success" id="btnExportJSON">📥 Export JSON</button>
+        <span id="rowCount" style="font-size:0.85rem;color:var(--muted);align-self:center;"></span>
+      </div>
+    </div>
+    </div>
+      <!-- Licensing Section -->
+      <div class="field" style="margin-top:6px;padding-top:12px;border-top:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;user-select:none;">
+            <input type="checkbox" id="filterLicensed" style="accent-color:var(--accent);width:16px;height:16px;">
+            <span>Licensed only</span>
+          </label>
+          <span style="color:var(--muted);font-size:0.75rem;">🍺 after results = might have licence (Google estimate)</span>
+          <span style="color:var(--muted);font-size:0.75rem;cursor:help;" title="Based on Google Places serves_* fields + business types. Not all licensed venues have this data — use 'Verify Licences' after search for definitive results.">ⓘ</span>
         </div>
       </div>
     </div>
@@ -299,7 +307,7 @@ function escHtml(s) {
 
 // --- CSV export ---
 function exportCSV(records) {
-  const headers = ['business_name','address','phone','email','website','types','source_town','source_categories','rating','reviews','lat','lng'];
+  const headers = ['business_name','address','phone','email','website','types','source_town','source_categories','rating','reviews','lat','lng','verified_licensed'];
   const esc = v => {
     if (v == null) return '';
     const s = String(v);
@@ -532,6 +540,7 @@ async function runScrape() {
         rec.serves_beer = enriched[j].serves_beer;
         rec.serves_wine = enriched[j].serves_wine;
         rec.serves_liquor = enriched[j].serves_liquor;
+        rec.verified_licensed = false;
       });
       if ((i + 5) % 50 === 0 || i + 5 >= entries.length) log(`    ${Math.min(i + 5, entries.length)}/${entries.length} enriched`);
       await new Promise(r => setTimeout(r, 100));
@@ -575,13 +584,13 @@ function computeIsLicensed(rec) {
 function renderResults(records) {
   $('resultsSection').style.display = 'block';
 
-  // Count licensed — uses type + Google serves_* data
-  const withLic = records.filter(computeIsLicensed).length;
-  $('licensedCount').textContent = `(${withLic} of ${records.length} known)`;
+  // Count licensed
+  const withLicEst = records.filter(computeIsLicensed).length;
+  const withLicVer = records.filter(r => r.verified_licensed).length;
 
   // Apply filter
   const filterOn = $('filterLicensed').checked;
-  const filtered = filterOn ? records.filter(computeIsLicensed) : records;
+  const filtered = filterOn ? records.filter(r => computeIsLicensed(r) || r.verified_licensed) : records;
 
   const byTown = {};
   filtered.forEach(r => { byTown[r.source_town] = (byTown[r.source_town] || 0) + 1; });
@@ -590,12 +599,24 @@ function renderResults(records) {
   const statsHtml = Object.entries(byTown)
     .map(([town, count]) => `<div class="stat"><div class="stat-num">${count}</div><div class="stat-label">${town}</div></div>`).join('');
   const phonePct = filtered.length ? Math.round(withPhone / filtered.length * 100) : 0;
-  $('statsRow').innerHTML = `${statsHtml}<div class="stat"><div class="stat-num">${filtered.length}</div><div class="stat-label">Showing</div></div><div class="stat"><div class="stat-num">${phonePct}%</div><div class="stat-label">With Phone</div></div>`;
+  const licText = withLicVer > 0
+    ? `<div class="stat"><div class="stat-num">🍺✅ ${withLicVer}</div><div class="stat-label">Verified Licensed</div></div>`
+    : '';
+  const estText = !filterOn
+    ? `<div class="stat"><div class="stat-num">🤷 ${withLicEst}</div><div class="stat-label">Est. Licensed</div></div>`
+    : '';
+  $('statsRow').innerHTML = `${statsHtml}<div class="stat"><div class="stat-num">${filtered.length}</div><div class="stat-label">Showing</div></div><div class="stat"><div class="stat-num">${phonePct}%</div><div class="stat-label">With Phone</div></div>${licText}${estText}`;
 
   const tbody = $('resultsBody');
   tbody.innerHTML = filtered.map(r => {
     const cats = (r.source_categories || []).join(', ');
-    const badge = computeIsLicensed(r) ? '<span style="font-size:0.75rem;color:var(--orange);" title="Known to serve alcohol">🍺</span>' : '';
+    const badge = computeIsLicensed(r)
+      ? (r.verified_licensed
+        ? '<span style="font-size:0.75rem;color:var(--orange);" title="Verified licensed (gov register)">🍺✅</span>'
+        : '<span style="font-size:0.75rem;color:var(--orange);" title="Might have licence (Google estimate)">🍺</span>')
+      : (r.verified_licensed
+        ? '<span style="font-size:0.75rem;color:var(--muted);" title="Contains alcohol">🫗</span>'
+        : '');
     return `<tr>
       <td class="td-name" title="${escHtml(r.business_name)}">${badge} ${escHtml(r.business_name)}</td>
       <td>${escHtml(r.address.replace(', Australia', ''))}</td>
@@ -668,6 +689,87 @@ $('postcodeInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e
 $('stateSelect').addEventListener('change', () => { if ($('postcodeInput').value.trim()) doPostcodeLookup(); });
 
 $('btnEnrichEmails').addEventListener('click', enrichEmails);
+
+// =============================================================================
+// WA Gov Licence Deep Check
+// =============================================================================
+async function verifyLicences() {
+  const records = Array.from(STATE.places.values());
+  if (!records.length) return;
+
+  const btn = $('btnVerifyLicences');
+  btn.disabled = true;
+  btn.textContent = '🍺 Verifying...';
+  setStatus('Cross-referencing WA liquor register...', 'working');
+
+  // Get unique suburbs for WA state
+  const waSuburbs = [...new Set(records.filter(r => r.source_state === 'WA').map(r => r.source_town))];
+  if (!waSuburbs.length) {
+    log('⚠ No WA results to verify. Deep check currently supports WA only.');
+    btn.disabled = false;
+    btn.textContent = '🍺 Verify Licences';
+    setStatus('Idle', 'idle');
+    return;
+  }
+
+  log(`🔍 Checking ${waSuburbs.length} WA suburb(s) against DLGSC register...`);
+  log(`   Suburbs: ${waSuburbs.join(', ')}`);
+
+  try {
+    const resp = await fetch(`/api/wa-licence-check?suburbs=${waSuburbs.join(',')}`);
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    const data = await resp.json();
+
+    // Build a lookup from the register
+    const register = new Map(); // suburb -> Set of normalized names
+    for (const [suburb, licences] of Object.entries(data.results)) {
+      const subLower = suburb.toLowerCase();
+      const names = new Set(licences.map(l =>
+        l.name.toLowerCase()
+          .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
+          .replace(/[^a-z0-9\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+      ));
+      register.set(subLower, names);
+    }
+
+    // Match each WA record against the register
+    let matched = 0;
+    for (const rec of records) {
+      if (rec.source_state !== 'WA') continue;
+      const subLower = rec.source_town.toLowerCase();
+      const regNames = register.get(subLower);
+      if (!regNames) continue;
+
+      const googleName = rec.business_name.toLowerCase()
+        .replace(/\b(inc|pty\s*ltd|ltd|hotel|motel|restaurant|tavern|bar|club)\b/g, '')
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      for (const regName of regNames) {
+        if (googleName === regName || googleName.includes(regName) || regName.includes(googleName)) {
+          rec.verified_licensed = true;
+          matched++;
+          break;
+        }
+      }
+    }
+
+    log(`✅ ${matched} businesses verified licensed via WA DLGSC register`);
+    if (data.errors.length) log(`   Errors: ${JSON.stringify(data.errors)}`);
+    renderResults(records);
+  } catch (err) {
+    log(`❌ Verification failed: ${err.message}`);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🍺 Verify Licences';
+  setStatus('Idle', 'idle');
+}
+
+$('btnVerifyLicences').addEventListener('click', verifyLicences);
 
 $('filterLicensed').addEventListener('change', () => {
   const records = Array.from(STATE.places.values());
