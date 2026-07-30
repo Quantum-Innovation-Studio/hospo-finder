@@ -645,9 +645,9 @@ function renderResults(records) {
       <td>${r.rating || ''}</td>
       <td style="text-align:center;">
         ${r.email
-          ? '<span style="color:var(--green);font-size:0.9rem;">✉️</span>'
+          ? '<span style="color:var(--green);font-size:0.9rem;" title="Email found">✉️</span>'
           : r.website
-            ? `<a href="#" onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="color:var(--blue);font-size:0.75rem;text-decoration:none;">Find Email</a>`
+            ? `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">✉️ Scrape Email</button>`
             : '<span style="color:var(--muted);font-size:0.7rem;">—</span>'
         }
       </td>
