@@ -647,7 +647,7 @@ function renderResults(records) {
         ${r.email
           ? '<span style="color:var(--green);font-size:0.9rem;" title="Email found">✉️</span>'
           : r.website
-            ? `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">✉️ Scrape Email</button>`
+            ? `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">✉️ Find Email</button>`
             : '<span style="color:var(--muted);font-size:0.7rem;">—</span>'
         }
       </td>
