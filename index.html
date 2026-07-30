@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hospitality Business Scraper</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --orange: #d29922; --red: #f85149; --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5; padding: 24px;
+}
+.container { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.6rem; font-weight: 600; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; }
+
+/* Form */
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 4px; color: var(--muted); }
+input[type="text"], textarea, select {
+  width: 100%; padding: 8px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+  font-size: 0.9rem; font-family: inherit;
+}
+input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; min-height: 60px; font-family: 'SFMono-Regular', Consolas, monospace; }
+select { cursor: pointer; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Categories */
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.cat-grid label {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-radius: 6px; cursor: pointer; font-size: 0.9rem; user-select: none;
+}
+.cat-grid label:hover { background: rgba(88,166,255,0.08); }
+.cat-grid input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* Suburb chips */
+.suburb-chip {
+  display: inline-block; padding: 4px 10px; border-radius: 14px;
+  font-size: 0.8rem; cursor: pointer; user-select: none;
+  background: rgba(88,166,255,0.12); border: 1px solid rgba(88,166,255,0.3);
+  transition: all 0.15s;
+}
+.suburb-chip:hover { background: rgba(88,166,255,0.25); }
+.suburb-chip.done { opacity: 0.4; cursor: default; }
+
+/* Buttons */
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 20px; border-radius: 6px; font-size: 0.9rem;
+  font-weight: 500; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); transition: all 0.15s;
+}
+.btn:hover { border-color: var(--accent); background: rgba(88,166,255,0.1); }
+.btn-primary { background: #238636; border-color: #2ea043; color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: rgba(248,81,73,0.1); }
+.btn-success { border-color: var(--green); color: var(--green); }
+
+/* Progress */
+#log {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px; height: 180px;
+  overflow-y: auto; font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.8rem; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-all;
+}
+#log .info { color: var(--muted); }
+#log .ok { color: var(--green); }
+#log .err { color: var(--red); }
+#log .highlight { color: var(--accent); }
+
+/* Summary */
+.stats { display: flex; gap: 20px; flex-wrap: wrap; }
+.stat { text-align: center; }
+.stat-num { font-size: 1.8rem; font-weight: 700; }
+.stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Table */
+.table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+th { background: var(--bg); position: sticky; top: 0; z-index: 1; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:hover td { background: rgba(56,139,253,0.05); }
+.td-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.no-phone { color: var(--red); font-size: 0.75rem; }
+.email-col { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Status badge */
+.status-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 12px;
+  font-size: 0.75rem; font-weight: 600;
+}
+.status-idle { background: rgba(139,148,158,0.2); color: var(--muted); }
+.status-running { background: rgba(210,153,34,0.2); color: var(--orange); }
+.status-done { background: rgba(63,185,80,0.2); color: var(--green); }
+.status-error { background: rgba(248,81,73,0.2); color: var(--red); }
+
+@media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🍽️ Hospitality Business Scraper</h1>
+<p class="subtitle">
+  Scrapes restaurants, pubs, cafes, service stations &amp; more from any Australian town via Google Places.
+  Loads all Australian postcodes for suburb lookup. All processing happens in your browser.
+</p>
+
+<!-- ==================== CONFIG ==================== -->
+<div class="card">
+  <h2>1. API Key <span style="color:var(--orange);font-size:0.8rem;font-weight:400;">— your own key, pasted in-browser, never sent to any server</span></h2>
+  <div class="field">
+    <label>Google Places API Key <span style="color:var(--muted);font-weight:400;">(with Places API enabled)</span></label>
+    <input type="text" id="apiKey" placeholder="AIzaSy..." value="" autocomplete="off">
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>2. Towns / Councils</h2>
+    <div class="field">
+      <label>State <span style="color:var(--muted);font-weight:400;">(appended to all towns below)</span></label>
+      <select id="stateSelect">
+        <option value="WA">Western Australia</option>
+        <option value="NSW">New South Wales</option>
+        <option value="VIC">Victoria</option>
+        <option value="QLD">Queensland</option>
+        <option value="SA">South Australia</option>
+        <option value="TAS">Tasmania</option>
+        <option value="ACT">Australian Capital Territory</option>
+        <option value="NT">Northern Territory</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Look up by postcode</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="postcodeInput" placeholder="e.g. 6330" maxlength="4" style="width:120px;flex:none;" autocomplete="off">
+        <button class="btn" id="btnLookupPostcode" type="button" style="flex-shrink:0;">🔍 Lookup</button>
+        <span id="postcodeStatus" style="font-size:0.8rem;color:var(--muted);align-self:center;"></span>
+      </div>
+      <div id="postcodeResults" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;min-height:28px;"></div>
+    </div>
+
+    <div class="field">
+      <label>Town names — one per line <span style="color:var(--muted);font-weight:400;">(type manually or use postcode lookup above)</span></label>
+      <textarea id="towns" rows="5" placeholder="e.g.&#10;Albany&#10;Esperance">Albany
+Esperance</textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Categories</h2>
+    <div class="cat-grid" id="categories">
+      <label><input type="checkbox" value="restaurants" checked> Restaurants</label>
+      <label><input type="checkbox" value="pubs and bars" checked> Pubs &amp; Bars</label>
+      <label><input type="checkbox" value="cafes" checked> Cafes</label>
+      <label><input type="checkbox" value="hotels" checked> Hotels / Motels</label>
+      <label><input type="checkbox" value="service stations" checked> Service Stations</label>
+      <label><input type="checkbox" value="takeaway food" checked> Takeaway / QSR</label>
+      <label><input type="checkbox" value="sporting clubs" checked> Sporting Clubs</label>
+      <label><input type="checkbox" value="supermarkets and convenience stores" checked> Supermarkets / Conv.</label>
+    </div>
+    <div style="margin-top:8px;font-size:0.8rem;color:var(--muted);">
+      <a href="#" id="selectAll" style="color:var(--accent);text-decoration:none;">Select all</a> ·
+      <a href="#" id="selectNone" style="color:var(--accent);text-decoration:none;">None</a>
+    </div>
+  </div>
+</div>
+
+<div class="btn-row">
+  <button class="btn btn-primary" id="btnScrape">▶ Scrape</button>
+  <button class="btn" id="btnStop" disabled>⏹ Stop</button>
+  <span id="statusBadge" class="status-badge status-idle" style="margin-left:auto;">Idle</span>
+</div>
+
+<!-- ==================== LOG ==================== -->
+<div class="card">
+  <h2>Progress</h2>
+  <div id="log"><span class="info">Ready. Paste your API key and click Scrape.</span></div>
+</div>
+
+<!-- ==================== RESULTS ==================== -->
+<div id="resultsSection" style="display:none;">
+  <div class="card">
+    <h2>Results</h2>
+    <div class="stats" id="statsRow"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <h2 style="margin:0;">Businesses</h2>
+      <div class="export-row">
+        <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
+        <button class="btn btn-success" id="btnExportCSV">📥 Export CSV</button>
+        <button class="btn btn-success" id="btnExportJSON">📥 Export JSON</button>
+        <span id="rowCount" style="font-size:0.85rem;color:var(--muted);align-self:center;"></span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Address</th>
+            <th>Phone</th>
+            <th>✉️ Email</th>
+            <th>Categories</th>
+            <th>Town</th>
+            <th>Rating</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<hr style="border-color:var(--border);margin:32px 0;">
+<p style="font-size:0.8rem;color:var(--muted);text-align:center;">
+  Bring your own Google Places API key. Emails scraped via Vercel serverless function or CLI.
+</p>
+
+</div><!-- /container -->
+
+<script>
+// =============================================================================
+// Hospitality Business Scraper v2 — Postcode Lookup + Email Enrichment
+// =============================================================================
+
+const STATE = {
+  running: false, stopped: false,
+  places: new Map(),
+  stats: { total: 0, byTown: {}, withPhone: 0 },
+};
+
+// --- DOM refs ---
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+const btnScrape = $('btnScrape');
+const btnStop = $('btnStop');
+const badge = $('statusBadge');
+
+// --- Logging ---
+function log(msg, cls = 'info') {
+  const s = document.createElement('span'); s.className = cls; s.textContent = msg;
+  logEl.appendChild(s); logEl.appendChild(document.createTextNode('\n'));
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setStatus(text, cls) { badge.textContent = text; badge.className = 'status-badge status-' + cls; }
+
+// --- Helpers ---
+function getSelectedCategories() {
+  return Array.from(document.querySelectorAll('#categories input:checked')).map(cb => cb.value);
+}
+function getTowns() {
+  const state = $('stateSelect').value;
+  return $('towns').value.split('\n').map(t => (t.trim() + ' ' + state).trim()).filter(Boolean);
+}
+function getKey() { return $('apiKey').value.trim(); }
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- CSV export ---
+function exportCSV(records) {
+  const headers = ['business_name','address','phone','email','website','types','source_town','source_categories','rating','reviews','lat','lng'];
+  const esc = v => {
+    if (v == null) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return [headers.join(','), ...records.map(r => headers.map(h => esc(r[h])).join(','))].join('\n');
+}
+function download(text, filename, mime = 'text/csv') {
+  const blob = new Blob([text], { type: mime + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// =============================================================================
+// Postcode Lookup
+// =============================================================================
+let postcodeData = null;
+
+async function loadPostcodeData() {
+  try {
+    $('postcodeStatus').textContent = 'Loading postcodes…';
+    const resp = await fetch('data/postcodes_index.json');
+    postcodeData = await resp.json();
+    $('postcodeStatus').textContent = `${Object.keys(postcodeData).length} postcodes loaded`;
+  } catch (e) {
+    $('postcodeStatus').textContent = 'Postcode data unavailable';
+    console.warn('Postcode data:', e);
+  }
+}
+
+function doPostcodeLookup() {
+  const pc = $('postcodeInput').value.trim();
+  const container = $('postcodeResults');
+  container.innerHTML = '';
+  if (!pc || pc.length < 3 || !postcodeData) {
+    if (!postcodeData) container.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Postcode index not loaded yet</span>';
+    return;
+  }
+
+  const matches = postcodeData[pc];
+  if (!matches || matches.length === 0) {
+    container.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">No suburbs found for postcode ' + pc + '</span>';
+    return;
+  }
+
+  const currentState = $('stateSelect').value;
+  const filtered = matches.filter(m => m.state === currentState);
+  const display = filtered.length > 0 ? filtered : matches;
+
+  // "Add all" link
+  const addAll = document.createElement('span');
+  addAll.className = 'suburb-chip';
+  addAll.style.borderColor = 'var(--green)';
+  addAll.textContent = `+ Add all ${display.length}`;
+  addAll.addEventListener('click', () => {
+    const ta = $('towns');
+    const existing = new Set(ta.value.split('\n').map(l => l.trim()).filter(Boolean));
+    const toAdd = display.filter(m => !existing.has(m.suburb)).map(m => m.suburb);
+    if (toAdd.length) ta.value = [...existing, ...toAdd].join('\n');
+    container.querySelectorAll('.suburb-chip').forEach(c => c.classList.add('done'));
+    log(`Added ${toAdd.length} suburb(s) from postcode ${pc}`, 'ok');
+  });
+  container.appendChild(addAll);
+  container.appendChild(document.createTextNode(' '));
+
+  display.forEach(m => {
+    const chip = document.createElement('span');
+    chip.className = 'suburb-chip';
+    chip.textContent = m.suburb;
+    chip.title = `${m.suburb}, ${m.state} (${m.type})`;
+    chip.addEventListener('click', () => {
+      if (chip.classList.contains('done')) return;
+      const ta = $('towns');
+      const lines = ta.value.split('\n').filter(l => l.trim());
+      if (!lines.includes(m.suburb)) {
+        lines.push(m.suburb);
+        ta.value = lines.join('\n');
+      }
+      chip.classList.add('done');
+      log(`Added "${m.suburb}" to town list`, 'ok');
+    });
+    container.appendChild(chip);
+    container.appendChild(document.createTextNode(' '));
+  });
+}
+
+// =============================================================================
+// Google Places API wrapper (browser-side)
+// =============================================================================
+let placesService = null, mapsApiLoaded = false, mapsApiLoading = false;
+
+function loadMapsApi(apiKey) {
+  return new Promise((resolve, reject) => {
+    if (mapsApiLoaded) { resolve(); return; }
+    if (mapsApiLoading) {
+      const check = setInterval(() => { if (mapsApiLoaded) { clearInterval(check); resolve(); } }, 200);
+      return;
+    }
+    mapsApiLoading = true;
+    const old = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+    if (old) old.remove();
+
+    window.__gmapsCallback = () => {
+      mapsApiLoaded = true; mapsApiLoading = false;
+      const div = document.createElement('div'); div.id = '__places_container'; div.style.display = 'none';
+      document.body.appendChild(div);
+      placesService = new google.maps.places.PlacesService(div);
+      resolve();
+    };
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=__gmapsCallback`;
+    s.onerror = () => { mapsApiLoading = false; reject(new Error('Failed to load Google Maps API')); };
+    document.head.appendChild(s);
+  });
+}
+
+function textSearchAll(query) {
+  return new Promise((resolve) => {
+    const all = [];
+    const cb = (results, status, pagination) => {
+      if (status === google.maps.places.PlacesServiceStatus.OK) {
+        all.push(...results);
+        if (pagination && pagination.hasNextPage) pagination.nextPage();
+        else resolve(all);
+      } else resolve(all);
+    };
+    placesService.textSearch({ query }, cb);
+  });
+}
+
+function getPhoneAndWebsite(placeId) {
+  return new Promise((resolve) => {
+    placesService.getDetails(
+      { placeId, fields: ['formatted_phone_number', 'international_phone_number', 'website'] },
+      (place, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK) {
+          resolve({
+            phone: place.formatted_phone_number || place.international_phone_number || '',
+            website: place.website || '',
+          });
+        } else resolve({ phone: '', website: '' });
+      }
+    );
+  });
+}
+
+// =============================================================================
+// Main scrape
+// =============================================================================
+async function runScrape() {
+  const apiKey = getKey();
+  if (!apiKey) { log('Please enter your Google Places API key.', 'err'); return; }
+  const towns = getTowns();
+  if (!towns.length) { log('Please enter at least one town.', 'err'); return; }
+  const categories = getSelectedCategories();
+  if (!categories.length) { log('Please select at least one category.', 'err'); return; }
+
+  STATE.running = true; STATE.stopped = false; STATE.places.clear();
+  btnScrape.disabled = true; btnStop.disabled = false;
+  setStatus('Running', 'running');
+  $('resultsSection').style.display = 'none';
+  logEl.innerHTML = '';
+  log('Loading Google Maps API…');
+
+  try { await loadMapsApi(apiKey); }
+  catch (e) { log('Failed to load Google Maps API: ' + e.message, 'err'); cleanup(); return; }
+
+  log(`API loaded. ${towns.length} town(s) × ${categories.length} categories.`, 'ok');
+  let searchesDone = 0, totalApiCalls = 0;
+  const totalSearches = towns.length * categories.length;
+
+  for (const town of towns) {
+    if (STATE.stopped) break;
+    log(`\n── ${town} ──`, 'highlight');
+
+    for (const cat of categories) {
+      if (STATE.stopped) break;
+      const query = `${cat} in ${town}`;
+      searchesDone++; log(`  [${searchesDone}/${totalSearches}] ${query}`);
+      totalApiCalls++;
+
+      const results = await textSearchAll(query);
+      log(`    ${results.length} results`);
+
+      for (const p of results) {
+        const pid = p.place_id;
+        if (!pid) continue;
+        const geo = (p.geometry && p.geometry.location) || {};
+        const lat = typeof geo.lat === 'function' ? geo.lat() : geo.lat;
+        const lng = typeof geo.lng === 'function' ? geo.lng() : geo.lng;
+
+        if (!STATE.places.has(pid)) {
+          STATE.places.set(pid, {
+            business_name: p.name || '',
+            address: p.formatted_address || '',
+            types: (p.types || []).join(','),
+            place_id: pid, rating: p.rating || '', reviews: p.user_ratings_total || '',
+            phone: '', website: '', email: '',
+            source_town: town, source_categories: [cat],
+            lat: lat != null ? lat : '', lng: lng != null ? lng : '',
+          });
+        } else {
+          const rec = STATE.places.get(pid);
+          if (!rec.source_categories.includes(cat)) rec.source_categories.push(cat);
+        }
+      }
+      const tc = Array.from(STATE.places.values()).filter(r => r.source_town === town).length;
+      log(`    → ${tc} unique in ${town}`);
+    }
+  }
+
+  if (STATE.stopped) {
+    log(`\n⏹ Stopped. Collected ${STATE.places.size} businesses.`, 'err');
+  } else {
+    log(`\n── Enriching ${STATE.places.size} businesses with phone numbers…`, 'highlight');
+    const entries = Array.from(STATE.places.entries());
+    for (let i = 0; i < entries.length; i += 5) {
+      if (STATE.stopped) break;
+      const batch = entries.slice(i, i + 5);
+      const enriched = await Promise.all(batch.map(([pid]) => getPhoneAndWebsite(pid)));
+      totalApiCalls += batch.length;
+      batch.forEach(([_, rec], j) => { rec.phone = enriched[j].phone; rec.website = enriched[j].website; });
+      if ((i + 5) % 50 === 0 || i + 5 >= entries.length) log(`    ${Math.min(i + 5, entries.length)}/${entries.length} enriched`);
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+
+  const records = Array.from(STATE.places.values());
+  const byTown = {}; let withPhone = 0;
+  records.forEach(r => { byTown[r.source_town] = (byTown[r.source_town] || 0) + 1; if (r.phone) withPhone++; });
+  STATE.stats = { total: records.length, byTown, withPhone };
+
+  log(`\n${'='.repeat(50)}`, 'highlight');
+  log(`Total businesses:   ${records.length}`, 'ok');
+  log(`With phone number:  ${withPhone} (${records.length ? Math.round(withPhone/records.length*100) : 0}%)`, 'ok');
+  log(`API calls made:     ${totalApiCalls}`, 'info');
+  log(`${'='.repeat(50)}`, 'highlight');
+
+  renderResults(records);
+  setStatus(`Done — ${records.length} businesses`, 'done');
+  btnScrape.disabled = false; btnStop.disabled = true; STATE.running = false;
+}
+
+function cleanup() { STATE.running = false; btnScrape.disabled = false; btnStop.disabled = true; setStatus('Idle', 'idle'); }
+
+// =============================================================================
+// Render results
+// =============================================================================
+function renderResults(records) {
+  $('resultsSection').style.display = 'block';
+  const statsHtml = Object.entries(STATE.stats.byTown)
+    .map(([town, count]) => `<div class="stat"><div class="stat-num">${count}</div><div class="stat-label">${town}</div></div>`).join('');
+  const phonePct = records.length ? Math.round(STATE.stats.withPhone / records.length * 100) : 0;
+  $('statsRow').innerHTML = `${statsHtml}<div class="stat"><div class="stat-num">${records.length}</div><div class="stat-label">Total</div></div><div class="stat"><div class="stat-num">${phonePct}%</div><div class="stat-label">With Phone</div></div>`;
+
+  const tbody = $('resultsBody');
+  tbody.innerHTML = records.map(r => {
+    const cats = (r.source_categories || []).join(', ');
+    const website = r.website || '';
+    return `<tr>
+      <td class="td-name" title="${escHtml(r.business_name)}">${escHtml(r.business_name)}</td>
+      <td>${escHtml(r.address.replace(', Australia', ''))}</td>
+      <td>${r.phone ? escHtml(r.phone) : '<span class="no-phone">—</span>'}</td>
+      <td class="email-col">${r.email ? escHtml(r.email) : ''}</td>
+      <td style="font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(cats)}">${escHtml(cats)}</td>
+      <td>${escHtml(r.source_town)}</td>
+      <td>${r.rating || ''}</td>
+    </tr>`;
+  }).join('');
+  $('rowCount').textContent = `Showing ${records.length} rows`;
+
+  // Enable enrich button if there are websites to scrape
+  const withSite = records.filter(r => r.website).length;
+  $('btnEnrichEmails').textContent = `✉️ Extract Emails (${withSite} with websites)`;
+  $('btnEnrichEmails').style.display = withSite > 0 ? '' : 'none';
+}
+
+// =============================================================================
+// Email Enrichment
+// =============================================================================
+async function enrichEmails() {
+  const records = Array.from(STATE.places.values());
+  const withSite = records.filter(r => r.website);
+  if (!withSite.length) { log('No businesses with websites to scrape.', 'info'); return; }
+
+  const btn = $('btnEnrichEmails');
+  btn.disabled = true;
+  log(`\n── Scraping emails from ${withSite.length} websites…`, 'highlight');
+
+  // Determine API endpoint (Vercel serverless, or fallback)
+  const apiBase = window.location.origin + '/api/email-scrape?url=';
+
+  let done = 0;
+  for (let i = 0; i < withSite.length; i++) {
+    const rec = withSite[i];
+    if (!rec.website) continue;
+    try {
+      const resp = await fetch(apiBase + encodeURIComponent(rec.website), { signal: AbortSignal.timeout(15000) });
+      const data = await resp.json();
+      if (data.emails && data.emails.length) {
+        rec.email = data.emails[0]; // take the first business email
+        if (data.emails.length > 1) rec.emails = data.emails.join('; ');
+      }
+    } catch (e) {
+      // Silently skip — some sites block, that's expected
+    }
+    done++;
+    if (done % 10 === 0 || done === withSite.length) log(`  Emails: ${done}/${withSite.length}`);
+    await new Promise(r => setTimeout(r, 200)); // be polite
+  }
+
+  const found = records.filter(r => r.email).length;
+  log(`${found} emails found (${Math.round(found/records.length*100)}%)`, 'ok');
+  renderResults(records);
+  btn.disabled = false;
+}
+
+// =============================================================================
+// Event bindings
+// =============================================================================
+btnScrape.addEventListener('click', runScrape);
+btnStop.addEventListener('click', () => { STATE.stopped = true; log('Stopping…', 'err'); btnStop.disabled = true; });
+
+$('selectAll').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('#categories input').forEach(cb => cb.checked = true); });
+$('selectNone').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('#categories input').forEach(cb => cb.checked = false); });
+
+$('btnLookupPostcode').addEventListener('click', doPostcodeLookup);
+$('postcodeInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doPostcodeLookup(); } });
+$('stateSelect').addEventListener('change', () => { if ($('postcodeInput').value.trim()) doPostcodeLookup(); });
+
+$('btnEnrichEmails').addEventListener('click', enrichEmails);
+
+$('btnExportCSV').addEventListener('click', () => {
+  const records = Array.from(STATE.places.values());
+  if (!records.length) return;
+  const flat = records.map(r => ({...r, source_categories: (r.source_categories || []).join(',')}));
+  download(exportCSV(flat), `hospitality_${new Date().toISOString().slice(0,10)}.csv`);
+});
+
+$('btnExportJSON').addEventListener('click', () => {
+  const records = Array.from(STATE.places.values());
+  if (!records.length) return;
+  const flat = records.map(r => ({...r, source_categories: (r.source_categories || []).join(',')}));
+  download(JSON.stringify(flat, null, 2), `hospitality_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
+});
+
+// --- Bootstrap ---
+loadPostcodeData();
+</script>
+</body>
+</html>
