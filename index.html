@@ -220,7 +220,7 @@ Esperance</textarea>
     <h2 style="margin:0;">Businesses</h2>
     <div style="display:flex;align-items:center;gap:12px;">
       <div class="export-row">
-        <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">✉️ Extract Emails</button>
+        <button class="btn" id="btnEnrichEmails" style="border-color:var(--orange);color:var(--orange);">📧 Retrieve Emails</button>
         <button class="btn" id="btnVerifyLicences" style="border-color:#6a5acd;color:#6a5acd;">🍺 Verify Licences</button>
         <button class="btn btn-success" id="btnExportCSV">📥 Export CSV</button>
         <button class="btn btn-success" id="btnExportJSON">📥 Export JSON</button>
@@ -570,48 +570,6 @@ async function runScrape() {
       if ((i + 5) % 50 === 0 || i + 5 >= entries.length) log(`    ${Math.min(i + 5, entries.length)}/${entries.length} enriched`);
       await new Promise(r => setTimeout(r, 100));
     }
-
-    // ── Email discovery phase ──
-    log(`\n── Discovering emails…`, 'highlight');
-    const allRecs = Array.from(STATE.places.values());
-    let emailDone = 0;
-    for (let i = 0; i < allRecs.length; i += 3) {
-      if (STATE.stopped) break;
-      const batch = allRecs.slice(i, i + 3);
-      await Promise.all(batch.map(async (rec) => {
-        if (rec.email) return;
-        // Find website if missing
-        if (!rec.website) {
-          const details = await getPhoneAndWebsite(rec.place_id);
-          totalApiCalls++;
-          if (details.website) rec.website = details.website;
-          else {
-            // DuckDuckGo search via serverless function
-            try {
-              const q = window.location.origin + '/api/email-fetch?search=' + encodeURIComponent(rec.business_name + ' ' + rec.source_town);
-              const resp = await fetch(q, { signal: AbortSignal.timeout(10000) });
-              const data = await resp.json();
-              if (data.website) rec.website = data.website;
-            } catch (e) {}
-          }
-        }
-        // Scrape website for email
-        if (rec.website) {
-          try {
-            const url = window.location.origin + '/api/email-fetch?url=' + encodeURIComponent(rec.website);
-            const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-            const data = await resp.json();
-            if (data.emails && data.emails.length) {
-              rec.email = data.emails[0];
-              if (data.emails.length > 1) rec.emails = data.emails.join('; ');
-            }
-          } catch (e) {}
-        }
-      }));
-      emailDone += batch.length;
-      if (emailDone % 5 === 0 || emailDone >= allRecs.length) log(`  Emails: ${emailDone}/${allRecs.length}`);
-      await new Promise(r => setTimeout(r, 100));
-    }
   }
 
   const records = Array.from(STATE.places.values());
@@ -697,9 +655,11 @@ function renderResults(records) {
   }).join('');
   $('rowCount').textContent = `Showing ${filtered.length} of ${records.length} rows`;
 
-  // Enable enrich button
+  // Enable email button
   const withoutEmail = records.filter(r => !r.email).length;
-  $('btnEnrichEmails').textContent = `✉️ Rescan Emails (${withoutEmail} missing)`;
+  $('btnEnrichEmails').textContent = withoutEmail > 0
+    ? `📧 Retrieve Emails (${withoutEmail} businesses)`
+    : `📧 Emails Retrieved ✓`;
   $('btnEnrichEmails').style.display = withoutEmail > 0 ? '' : 'none';
 }
 
@@ -710,7 +670,7 @@ async function enrichEmails() {
   const records = Array.from(STATE.places.values());
   const missing = records.filter(r => !r.email);
   if (!missing.length) { log('All businesses already have emails.', 'info'); return; }
-  log(`\n── Re-scanning ${missing.length} businesses for emails…`, 'highlight');
+  log(`\n── Retrieving emails for ${missing.length} businesses…`, 'highlight');
   const btn = $('btnEnrichEmails');
   btn.disabled = true;
 
@@ -747,7 +707,7 @@ async function enrichEmails() {
       }
     }));
     done += batch.length;
-    if (done % 5 === 0 || done >= missing.length) log(`  Rescan: ${done}/${missing.length}`);
+    if (done % 5 === 0 || done >= missing.length) log(`  Emails: ${done}/${missing.length}`);
     await new Promise(r => setTimeout(r, 200));
   }
 
