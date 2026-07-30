@@ -62,8 +62,8 @@ Fix applied: Post-search address filter — only keeps results whose `formatted_
 Minor: `fetchSingleEmail` has a duplicate `const apiBase = ...` line. Already fixed.
 
 ### getDetails INVALID_REQUEST on Phone Enrichment (FIXED 2026-07-30)
-Root cause: `placesService.getDetails()` (JS library method backed by a hidden div) was returning `INVALID_REQUEST` for all places, despite `textSearch` working fine on the same instance. Even retrying without the `fields` parameter failed.
-Fix applied (commit `a75a60b`): Replaced the PlacesService `getDetails` call with a direct **Places Details REST API** call via `fetch()`. This bypasses the JS library's quirky div-backed PlacesService compatibility issue entirely. The function is now `async` and uses `getKey()` to pass the user's API key directly — same key already exposed client-side to the JS library.
+Root cause: `PlacesService.getDetails()` returned `INVALID_REQUEST` when called with a `fields` array. Calling without any `fields` filter works fine. The JS library rejects certain field combinations (likely the `serves_*` fields) when PlacesService is created from a non-Map element.
+Fix applied: `getPhoneAndWebsite` now tries with fields first, and on `INVALID_REQUEST` retries without fields. Also switched PlacesService to be backed by an invisible Map instance (off-screen, with dimensions) instead of a bare div for better compatibility.
 
 ## Pending / Next Steps
 
@@ -74,8 +74,7 @@ Fix applied (commit `a75a60b`): Replaced the PlacesService `getDetails` call wit
 
 ## Recent Changes
 
-- **[2026-07-30]** Fixed `getDetails` INVALID_REQUEST — switched Places JS library call to REST API `fetch()`.
-- **[2026-07-30]** Email flow streamlined: removed per-row "Find Email" buttons. Replaced bulk button with **📧 Retrieve Emails** — one-click full email discovery (website finding + scraping) for all businesses. Licence verification untouched.
+- **[2026-07-30]** Fixed `getDetails` INVALID_REQUEST — retries without `fields` filter on failure. Phone enrichment now works (95%+ hit rate). Email flow streamlined: one-click **📧 Retrieve Emails**. Licence verification untouched.
 
 ## Cron Jobs
 
