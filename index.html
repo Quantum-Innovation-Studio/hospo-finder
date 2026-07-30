@@ -249,13 +249,14 @@ Esperance</textarea>
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Address</th>
+            <th style="text-align:left;min-width:180px;">Name</th>
+            <th style="text-align:left;">Address</th>
             <th>Phone</th>
-            <th>✉️ Email</th>
+            <th>Email</th>
             <th>Categories</th>
             <th>Town</th>
-            <th>Rating</th>
+            <th>⭐</th>
+            <th style="width:80px;">Get</th>
           </tr>
         </thead>
         <tbody id="resultsBody"></tbody>
@@ -632,6 +633,14 @@ function renderResults(records) {
       <td style="font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(cats)}">${escHtml(cats)}</td>
       <td>${escHtml(r.source_town)}</td>
       <td>${r.rating || ''}</td>
+      <td style="text-align:center;">
+        ${r.email
+          ? '<span style="color:var(--green);font-size:0.9rem;">✉️</span>'
+          : r.website
+            ? `<a href="#" onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="color:var(--blue);font-size:0.75rem;text-decoration:none;">Find Email</a>`
+            : '<span style="color:var(--muted);font-size:0.7rem;">—</span>'
+        }
+      </td>
     </tr>`;
   }).join('');
   $('rowCount').textContent = `Showing ${filtered.length} of ${records.length} rows`;
@@ -679,6 +688,29 @@ async function enrichEmails() {
   log(`${found} emails found (${Math.round(found/records.length*100)}%)`, 'ok');
   renderResults(records);
   btn.disabled = false;
+}
+
+// Single-business email lookup (per-row "Find Email" click)
+async function fetchSingleEmail(placeId) {
+  const records = Array.from(STATE.places.values());
+  const rec = records.find(r => r.place_id === placeId);
+  if (!rec || !rec.website) return;
+
+  const apiBase = window.location.origin + '/api/email-fetch?url=';
+  try {
+    const resp = await fetch(apiBase + encodeURIComponent(rec.website), { signal: AbortSignal.timeout(15000) });
+    const data = await resp.json();
+    if (data.emails && data.emails.length) {
+      rec.email = data.emails[0];
+      if (data.emails.length > 1) rec.emails = data.emails.join('; ');
+      log(`✉️ Found email for ${rec.business_name}: ${rec.email}`);
+    } else {
+      log(`No email found for ${rec.business_name}`, 'info');
+    }
+  } catch (e) {
+    log(`Couldn't reach ${rec.business_name}'s website`, 'err');
+  }
+  renderResults(records);
 }
 
 // =============================================================================
