@@ -307,7 +307,7 @@ function escHtml(s) {
 
 // --- CSV export ---
 function exportCSV(records) {
-  const headers = ['business_name','address','phone','email','website','types','source_town','source_categories','rating','reviews','lat','lng','verified_licensed'];
+  const headers = ['business_name','address','phone','email','website','types','source_town','source_state','source_categories','rating','reviews','lat','lng','verified_licensed'];
   const esc = v => {
     if (v == null) return '';
     const s = String(v);
@@ -471,6 +471,7 @@ async function runScrape() {
   if (!categories.length) { log('Please select at least one category.', 'err'); return; }
 
   STATE.running = true; STATE.stopped = false; STATE.places.clear();
+  const searchState = $('stateSelect').value;
   btnScrape.disabled = true; btnStop.disabled = false;
   setStatus('Running', 'running');
   $('resultsSection').style.display = 'none';
@@ -511,7 +512,7 @@ async function runScrape() {
             types: (p.types || []).join(','),
             place_id: pid, rating: p.rating || '', reviews: p.user_ratings_total || '',
             phone: '', website: '', email: '',
-            source_town: town, source_categories: [cat],
+            source_town: town, source_state: searchState, source_categories: [cat],
             lat: lat != null ? lat : '', lng: lng != null ? lng : '',
           });
         } else {
@@ -702,8 +703,13 @@ async function verifyLicences() {
   btn.textContent = '🍺 Verifying...';
   setStatus('Cross-referencing WA liquor register...', 'working');
 
-  // Get unique suburbs for WA state
-  const waSuburbs = [...new Set(records.filter(r => r.source_state === 'WA').map(r => r.source_town))];
+  // Get unique suburbs for WA state (strip state suffix from town names)
+  const waSuburbs = [...new Set(
+    records.filter(r => r.source_state === 'WA').map(r => {
+      const parts = r.source_town.split(' ');
+      return parts.slice(0, -1).join(' '); // Drop the last word (state code)
+    })
+  )];
   if (!waSuburbs.length) {
     log('⚠ No WA results to verify. Deep check currently supports WA only.');
     btn.disabled = false;
@@ -738,7 +744,8 @@ async function verifyLicences() {
     let matched = 0;
     for (const rec of records) {
       if (rec.source_state !== 'WA') continue;
-      const subLower = rec.source_town.toLowerCase();
+      const parts = rec.source_town.split(' ');
+      const subLower = parts.slice(0, -1).join(' ').toLowerCase() || rec.source_town.toLowerCase();
       const regNames = register.get(subLower);
       if (!regNames) continue;
 
