@@ -33,14 +33,14 @@
 5. **Project moved** — From `~/hospitality-scraper/` to Google Drive shared folder (hospo-finder/).
 6. **Suburb filter fix** — Address-based filtering after Google Places text search to exclude neighbouring suburbs.
 
-## Current UI State
+## Current UI State (as of 2026-07-30 — fully functional)
 
 - State selector (8 states) + free-text town input
-- Postcode lookup → auto-fills towns
+- Postcode lookup → auto-fills suburbs
 - Category checkboxes for type filter
-- Results table: Name, Address, Phone, **Email**, Categories, Town, ⭐
-- **Flow**: Search → phones auto-enriched → results shown → user clicks **📧 Retrieve Emails** (bulk) → emails populated → user clicks **🍺 Verify Licences** → licence check → user exports CSV/JSON
-- Top buttons: 📧 Retrieve Emails, 🍺 Verify Licences, 📥 Export CSV, 📥 Export JSON
+- Results table: Name, Address, Phone, Email, Categories, Town, ⭐
+- Phone enrichment runs automatically after search (~95% hit rate)
+- Top buttons: 📧 Retrieve Emails, 🍺 Verify Licences, 📥 Export CSV/JSON
 - "Coming soon" licensing for QLD, SA, ACT, NT with manual check links
 - Footer: © Quantum Innovation WA + disclaimer
 
@@ -74,7 +74,9 @@ Fix applied: `getPhoneAndWebsite` now tries with fields first, and on `INVALID_R
 
 ## Recent Changes
 
-- **[2026-07-30]** Fixed `getDetails` INVALID_REQUEST — retries without `fields` filter on failure. Phone enrichment now works (95%+ hit rate). Email flow streamlined: one-click **📧 Retrieve Emails**. Licence verification untouched.
+- **[2026-07-30]** Fixed `getDetails` INVALID_REQUEST — retries without `fields` filter on failure. Phone enrichment now works (95%+ hit rate).
+- **[2026-07-30]** Email flow streamlined: one-click **📧 Retrieve Emails**. Licence verification untouched.
+- **[2026-07-30]** Fixed suburb address filter — strips postcodes and state suffixes before matching, so `"Kallaroo 6025"` → matches `\bKallaroo\b` correctly. No more cross-postcode bleed.
 
 ## Cron Jobs
 
