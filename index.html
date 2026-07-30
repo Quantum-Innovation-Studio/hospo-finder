@@ -433,7 +433,7 @@ function loadMapsApi(apiKey) {
   });
 }
 
-function textSearchAll(query) {
+function textSearchAll(query, town) {
   return new Promise((resolve) => {
     const all = [];
     const cb = (results, status, pagination) => {
@@ -444,6 +444,16 @@ function textSearchAll(query) {
       } else resolve(all);
     };
     placesService.textSearch({ query }, cb);
+  }).then(results => {
+    // Filter to only keep results whose address actually contains the target suburb
+    if (!town) return results;
+    const townLower = town.toLowerCase();
+    return results.filter(r => {
+      const addr = (r.formatted_address || r.vicinity || '').toLowerCase();
+      // Check if the address mentions the suburb
+      // (use word-boundary check to avoid "Belmont" matching "Belmont Park" in another suburb)
+      return addr.includes(townLower) && new RegExp(`\\b${townLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(addr);
+    });
   });
 }
 
@@ -502,7 +512,7 @@ async function runScrape() {
       searchesDone++; log(`  [${searchesDone}/${totalSearches}] ${query}`);
       totalApiCalls++;
 
-      const results = await textSearchAll(query);
+      const results = await textSearchAll(query, town);
       log(`    ${results.length} results`);
 
       for (const p of results) {
