@@ -638,7 +638,7 @@ function renderResults(records) {
       <td class="td-name" title="${escHtml(r.business_name)}">${badge} ${escHtml(r.business_name)}</td>
       <td>${escHtml(r.address.replace(', Australia', ''))}</td>
       <td>${r.phone ? escHtml(r.phone) : '<span class="no-phone">—</span>'}</td>
-      <td class="email-col">${r.email ? escHtml(r.email) : (r.website ? `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">✉️ Find</button>` : '')}</td>
+      <td class="email-col">${r.email ? escHtml(r.email) : `<button onclick="event.preventDefault(); fetchSingleEmail('${r.place_id}');" style="background:none;border:1px solid var(--orange);color:var(--orange);border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;" title="${r.website ? 'Scrape website for email' : 'Find website + email'}">✉️ Find Email</button>`}</td>
       <td style="font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(cats)}">${escHtml(cats)}</td>
       <td>${escHtml(r.source_town)}</td>
       <td>${r.rating || ''}</td>
@@ -695,7 +695,36 @@ async function enrichEmails() {
 async function fetchSingleEmail(placeId) {
   const records = Array.from(STATE.places.values());
   const rec = records.find(r => r.place_id === placeId);
-  if (!rec || !rec.website) return;
+  if (!rec) return;
+
+  // If no website known, try fetching Place Details again (first time may have failed)
+  if (!rec.website) {
+    log(`Looking up website for ${rec.business_name}…`, 'info');
+    const details = await getPhoneAndWebsite(placeId);
+    if (details.website) {
+      rec.website = details.website;
+      log(`Found website: ${rec.website}`);
+    } else {
+      // Last resort — try a web search via our serverless function
+      const searchUrl = window.location.origin + '/api/email-fetch?search=' + encodeURIComponent(rec.business_name + ' ' + rec.source_town);
+      try {
+        const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(15000) });
+        const data = await resp.json();
+        if (data.website) {
+          rec.website = data.website;
+          log(`Discovered website: ${rec.website}`);
+        } else {
+          log(`Couldn't find a website for ${rec.business_name}. Try finding it manually.`, 'err');
+          renderResults(records);
+          return;
+        }
+      } catch (e) {
+        log(`Couldn't discover website for ${rec.business_name}`, 'err');
+        renderResults(records);
+        return;
+      }
+    }
+  }
 
   const apiBase = window.location.origin + '/api/email-fetch?url=';
   try {
