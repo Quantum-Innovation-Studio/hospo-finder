@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hospitality Business Scraper</title>
+<title>Hospitality Business Finder</title>
 <style>
 :root {
   --bg: #0d1117; --surface: #161b22; --border: #30363d;
@@ -114,9 +114,9 @@ tr:hover td { background: rgba(56,139,253,0.05); }
 <body>
 <div class="container">
 
-<h1><img src="logo.png" alt="" style="height:1.2em;vertical-align:middle;margin-right:8px;"> Hospitality Business Scraper</h1>
+<h1><img src="logo.png" alt="" style="height:1.2em;vertical-align:middle;margin-right:8px;"> Hospitality Business Finder</h1>
 <p class="subtitle">
-  Scrapes restaurants, pubs, cafes, service stations &amp; more from any Australian town via Google Places.
+  Finds restaurants, pubs, cafes, service stations &amp; more from any Australian town via Google Places.
   Loads all Australian postcodes for suburb lookup. All processing happens in your browser.
 </p>
 
@@ -196,7 +196,7 @@ Esperance</textarea>
 </div>
 
 <div class="btn-row">
-  <button class="btn btn-primary" id="btnScrape">▶ Scrape</button>
+  <button class="btn btn-primary" id="btnScrape">▶ Search</button>
   <button class="btn" id="btnStop" disabled>⏹ Stop</button>
   <span id="statusBadge" class="status-badge status-idle" style="margin-left:auto;">Idle</span>
 </div>
@@ -204,7 +204,7 @@ Esperance</textarea>
 <!-- ==================== LOG ==================== -->
 <div class="card">
   <h2>Progress</h2>
-  <div id="log"><span class="info">Ready. Paste your API key and click Scrape.</span></div>
+  <div id="log"><span class="info">Ready. Paste your API key and click Search.</span></div>
 </div>
 
 <!-- ==================== RESULTS ==================== -->
@@ -265,14 +265,14 @@ Esperance</textarea>
 
 <hr style="border-color:var(--border);margin:32px 0;">
 <p style="font-size:0.8rem;color:var(--muted);text-align:center;">
-  Bring your own Google Places API key. Emails scraped via Vercel serverless function or CLI.
+  Bring your own Google Places API key. Email enrichment via Vercel serverless function or CLI.
 </p>
 
 </div><!-- /container -->
 
 <script>
 // =============================================================================
-// Hospitality Business Scraper v2 — Postcode Lookup + Email Enrichment
+// Hospitality Business Finder v2 — Postcode Lookup + Email Enrichment
 // =============================================================================
 
 const STATE = {
@@ -465,7 +465,7 @@ function getPhoneAndWebsite(placeId) {
 }
 
 // =============================================================================
-// Main scrape
+// Main search / fetch
 // =============================================================================
 async function runScrape() {
   const apiKey = getKey();
@@ -647,11 +647,10 @@ function renderResults(records) {
 async function enrichEmails() {
   const records = Array.from(STATE.places.values());
   const withSite = records.filter(r => r.website);
-  if (!withSite.length) { log('No businesses with websites to scrape.', 'info'); return; }
-
+  if (!withSite.length) { log('No businesses with websites to check.', 'info'); return; }
+  log(`\n── Checking ${withSite.length} websites for contact details…`, 'highlight');
   const btn = $('btnEnrichEmails');
   btn.disabled = true;
-  log(`\n── Scraping emails from ${withSite.length} websites…`, 'highlight');
 
   // Determine API endpoint (Vercel serverless, or fallback)
   const apiBase = window.location.origin + '/api/email-scrape?url=';
