@@ -457,12 +457,13 @@ function textSearchAll(query, town) {
   }).then(results => {
     // Filter to only keep results whose address actually contains the target suburb
     if (!town) return results;
-    const townLower = town.toLowerCase();
+    // Strip postcode and state suffix to get just the suburb name for filtering
+    const suburb = town.replace(/\d{4}\s*/, '').replace(/\s*(WA|NSW|VIC|QLD|SA|TAS|ACT|NT)\s*$/i, '').trim().toLowerCase();
+    if (!suburb) return results;
     return results.filter(r => {
       const addr = (r.formatted_address || r.vicinity || '').toLowerCase();
-      // Check if the address mentions the suburb
-      // (use word-boundary check to avoid "Belmont" matching "Belmont Park" in another suburb)
-      return addr.includes(townLower) && new RegExp(`\\b${townLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(addr);
+      // Use word-boundary check to avoid "Belmont" matching "Belmont Park" in another suburb
+      return new RegExp(`\\b${suburb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(addr);
     });
   });
 }
